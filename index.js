@@ -4,13 +4,13 @@ const compression = require('compression');
 
 const app = express();
 
-// Оставляем сжатие только на выходе к клиенту (безопасно)
+// Сжатие ВКЛЮЧЕНО (экономит трафик Render -> Android)
+// Но оно применяется только к ответу, который уходит в приложение
 app.use(compression());
 
 const WHITELIST = process.env.WHITELIST ? process.env.WHITELIST.split(',').map(d => d.trim()) : [];
 
 app.get('/:protocol//:url(*)', async (req, res) => {
-    // Собираем URL точно так же, как в первом (рабочем) варианте
     const targetUrl = `${req.params.protocol}//${req.params.url}${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
     
     try {
@@ -25,19 +25,23 @@ app.get('/:protocol//:url(*)', async (req, res) => {
             return res.status(403).send('');
         }
 
-        // Возвращаемся к стандартному методу запроса из первого варианта
+        // Используем самый простой axios запрос (как в 1-м варианте)
+        // Не добавляем Accept-Encoding вручную, чтобы не спровоцировать "br" (Brotli)
         const response = await axios.get(targetUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 Proxy-Service' },
-            responseType: 'text' // Это самый стабильный вариант для HTML
+            responseType: 'text' 
         });
 
+        // Пробрасываем только Content-Type
         res.set('Content-Type', response.headers['content-type']);
+        
+        // Express + compression сами решат, сжимать ли данные для OkHttp
         res.send(response.data);
 
     } catch (error) {
-        res.status(500).send(``);
+        res.status(500).send(`Proxy Error: ${error.message}`);
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Stable Proxy running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Stable Proxy with Compression running`));
