@@ -1,23 +1,16 @@
 const express = require('express');
 const axios = require('axios');
-const compression = require('compression');
+const compression = require('compression');   // ← НОВОЕ
 
 const app = express();
 
-// Настраиваем сжатие более строго для совместимости с Android 15
+// Включаем сжатие (gzip) для ВСЕХ ответов
 app.use(compression({
-    level: 6,           // Средний уровень сжатия (баланс скорости и размера)
-    threshold: 1024,    // Не сжимать ответы меньше 1 КБ
-    filter: (req, res) => {
-        // Сжимаем только текст, html и json
-        const contentType = res.getHeader('Content-Type');
-        if (contentType && (contentType.includes('text') || contentType.includes('json'))) {
-            return true;
-        }
-        return false;
-    }
+    threshold: 512,        // сжимаем только если > 512 байт
+    level: 6               // баланс скорость/сжатие (можно 9 для максимального)
 }));
 
+// Читаем список разрешенных доменов
 const WHITELIST = process.env.WHITELIST ? process.env.WHITELIST.split(',').map(d => d.trim()) : [];
 
 app.get('/:protocol//:url(*)', async (req, res) => {
@@ -32,24 +25,27 @@ app.get('/:protocol//:url(*)', async (req, res) => {
         );
 
         if (!isAllowed) {
-            return res.status(403).send('');
+            return res.status(403).send('E');
         }
 
+        // Запрашиваем сжатые данные от целевого сервера
         const response = await axios.get(targetUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 Proxy-Service' },
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Encoding': 'gzip, deflate, br'   // ← НОВОЕ
+            },
             responseType: 'text'
         });
 
-        // Важно: берем только тип контента, не копируем все заголовки подряд
-        res.setHeader('Content-Type', response.headers['content-type'] || 'text/html');
+        res.set('Content-Type', response.headers['content-type']);
         
-        // Отправляем данные. Middleware 'compression' перехватит их и сожмет.
+        // compression middleware автоматически добавит Content-Encoding: gzip
         res.send(response.data);
 
     } catch (error) {
-        res.status(500).send(``);
+        res.status(500).send(`E`);
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Proxy with safe compression running`));
+app.listen(PORT, () => console.log(`Proxy running on port ${PORT} with gzip compression`));
