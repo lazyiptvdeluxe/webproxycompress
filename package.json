@@ -1,5 +1,5 @@
 {
-  "name": "simple-proxy-no-cache",
+  "name": "simple-proxy",
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
